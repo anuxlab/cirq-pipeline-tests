@@ -28,7 +28,7 @@ def qaoa_maxcut_expectation(gamma, beta, simulator=None):
     c.append(cirq.CNOT(q0, q1))
     c.append(cirq.rz(-2 * float(gamma))(q1))
     c.append(cirq.CNOT(q0, q1))
-    c.append(cirq.rx(2 * float(beta))(q0), cirq.rx(2 * float(beta))(q1))
+    c.append([cirq.rx(2 * float(beta))(q0), cirq.rx(2 * float(beta))(q1)])
     r = simulator.simulate(c)
     probs = np.abs(r.final_state_vector)**2
     # MaxCut value for bitstring 01/10 is 1.
@@ -71,7 +71,7 @@ def train_quantum_kernel_svm(X_train, y_train, X_test):
 
 def qnn_forward(theta, x):
     q = cirq.LineQubit(0)
-    c = cirq.Circuit(cirq.ry(float(x))(q), cirq.rz(float(theta))(q))
+    c = cirq.Circuit(cirq.ry(float(x))(q), cirq.ry(float(theta))(q))
     r = cirq.Simulator().simulate(c)
     return expectation_z(r.final_state_vector)
 

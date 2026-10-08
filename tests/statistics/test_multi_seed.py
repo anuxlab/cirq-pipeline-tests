@@ -7,7 +7,7 @@ def test_multi_seed_mean_is_stable():
     p = (1-np.cos(0.6))/2
     means = []
     for seed in range(5):
-        r = cirq.Simulator().run(c,repetitions=2000,seed=seed)
+        r = cirq.Simulator(seed=seed).run(c,repetitions=2000)
         means.append(np.mean(r.measurements["m"]))
     assert abs(np.mean(means)-p) < 0.02
     assert np.std(means) < 0.02

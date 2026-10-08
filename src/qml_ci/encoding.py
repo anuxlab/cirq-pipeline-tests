@@ -24,7 +24,7 @@ def amplitude_encoding(x, qubits):
     if norm == 0:
         raise ValueError("zero vector cannot be amplitude encoded")
     state = x / norm
-    return cirq.StatePreparationChannel(state).on(*qubits)
+    return cirq.Circuit(cirq.StatePreparationChannel(state).on(*qubits))
 
 def z_feature_map(x, qubits):
     x = validate_features(x, len(qubits))
