@@ -6,12 +6,8 @@ on:
   pull_request:
     branches: [main, master]
 
-permissions:
-  contents: read
-
 jobs:
   test:
-    name: test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,8 +15,7 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -28,37 +23,26 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Upgrade packaging tools
+      - name: Install
         run: |
           python -m pip install --upgrade pip setuptools wheel
-
-      - name: Install project and test dependencies
-        run: |
           python -m pip install -e ".[dev]"
-          python -m pip check
 
-      - name: Verify environment and imports
+      - name: Verify environment
         run: |
           python --version
           python -m pip --version
-          python -m pip show cirq pytest pytest-cov
-          python -c "import cirq, numpy, scipy, sklearn, pytest; print('Cirq:', cirq.__version__); print('NumPy:', numpy.__version__); print('SciPy:', scipy.__version__); print('scikit-learn:', sklearn.__version__); print('pytest:', pytest.__version__)"
-          python -c "import qml_ci, qml_ci.algorithms, qml_ci.encoding, qml_ci.mitigation, qml_ci.observables, qml_ci.resources, qml_ci.serialization, qml_ci.statistics, qml_ci.topology; print('qml_ci imports: OK')"
+          python -m pip check
+          python -c "import cirq, numpy, scipy, sklearn, pytest; print('Cirq:', cirq.__version__); print('NumPy:', numpy.__version__); print('SciPy:', scipy.__version__); print('sklearn:', sklearn.__version__); print('pytest:', pytest.__version__)"
+          python -c "import qml_ci; print('qml_ci:', qml_ci.__version__)"
 
-      - name: Collect tests
+      - name: Collect core tests
         run: |
-          python -m pytest tests \
-            -m "not slow and not nightly and not hardware" \
-            --collect-only -q
+          python -m pytest tests             -m "not slow and not nightly and not hardware"             --collect-only -q
 
       - name: Run core tests
         run: |
-          python -m pytest tests \
-            -m "not slow and not nightly and not hardware" \
-            --cov=qml_ci \
-            --cov-report=term-missing \
-            --cov-report=xml \
-            -v
+          python -m pytest tests             -m "not slow and not nightly and not hardware"             --cov=qml_ci             --cov-report=term-missing             --cov-report=xml             -v
 
       - name: Upload coverage
         if: always()
