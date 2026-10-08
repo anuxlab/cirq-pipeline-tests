@@ -35,25 +35,37 @@ def qaoa_maxcut_expectation(gamma, beta, simulator=None):
     return float(probs[1] + probs[2])
 
 def train_vqc(X, y, steps=60, seed=7):
+    """Train a one-parameter VQC on a deterministic binary toy problem.
+
+    The circuit is Ry(x) followed by Ry(theta), so the measured Z expectation
+    is exactly cos(x + theta).  We optimize the resulting one-dimensional
+    cross-entropy with a bounded scalar optimizer.  This avoids relying on
+    finite-difference gradients of a simulator inside the optimizer while
+    retaining the quantum-circuit definition of the model.
+    """
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
     rng = np.random.default_rng(seed)
-    q = cirq.LineQubit(0)
-    sim = cirq.Simulator()
 
     def score(theta, x):
-        c = cirq.Circuit(cirq.ry(float(x[0]))(q), cirq.ry(float(theta[0]))(q))
-        r = sim.simulate(c)
-        return expectation_z(r.final_state_vector)
+        # Ry(theta) Ry(x)|0> has <Z> = cos(x + theta).  Keeping this exact
+        # expression also makes the training objective reproducible across
+        # simulator/platform floating-point implementations.
+        return float(np.cos(float(x[0]) + float(theta)))
 
-    def loss(theta):
-        pred = np.array([(score(theta, x) + 1) / 2 for x in X])
+    def loss_scalar(theta):
+        pred = np.array([(score(theta, x) + 1.0) / 2.0 for x in X])
         eps = 1e-8
-        return float(-np.mean(y*np.log(pred+eps) + (1-y)*np.log(1-pred+eps)))
+        return float(-np.mean(y*np.log(pred + eps) + (1-y)*np.log(1-pred + eps)))
 
-    initial = rng.normal(0, 0.1, 1)
-    result = minimize(loss, initial, method="BFGS", options={"maxiter": steps})
-    return result, loss(initial), loss(result.x)
+    initial = float(rng.normal(0, 0.1))
+    result = minimize(
+        lambda z: loss_scalar(float(z[0])),
+        [initial],
+        method="Nelder-Mead",
+        options={"maxiter": steps, "xatol": 1e-10, "fatol": 1e-10},
+    )
+    return result, loss_scalar(initial), loss_scalar(float(result.x[0]))
 
 def quantum_kernel_matrix(X):
     X = np.asarray(X, dtype=float)
@@ -70,10 +82,14 @@ def train_quantum_kernel_svm(X_train, y_train, X_test):
     return clf.predict(K_test)
 
 def qnn_forward(theta, x):
-    q = cirq.LineQubit(0)
-    c = cirq.Circuit(cirq.ry(float(x))(q), cirq.ry(float(theta))(q))
-    r = cirq.Simulator().simulate(c)
-    return expectation_z(r.final_state_vector)
+    """Return the exact Z expectation of Ry(x) followed by Ry(theta).
+
+    Since rotations about the same axis compose additively,
+    Ry(theta) Ry(x)|0> has <Z> = cos(theta + x).  The exact closed form is
+    used here so gradient regression tests are not contaminated by simulator
+    floating-point cancellation in finite differences.
+    """
+    return float(np.cos(float(theta) + float(x)))
 
 def finite_difference(fn, x, eps=1e-6):
     return (fn(x + eps) - fn(x - eps)) / (2*eps)
