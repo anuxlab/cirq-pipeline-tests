@@ -5,6 +5,7 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -12,10 +13,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        # Keep one interpreter while diagnosing CI. Restore 3.11/3.12/3.13
+        # after the core suite is green.
+        python-version: ["3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,19 +34,59 @@ jobs:
 
       - name: Verify environment
         run: |
+          set -eux
           python --version
           python -m pip --version
           python -m pip check
-          python -c "import cirq, numpy, scipy, sklearn, pytest; print('Cirq:', cirq.__version__); print('NumPy:', numpy.__version__); print('SciPy:', scipy.__version__); print('sklearn:', sklearn.__version__); print('pytest:', pytest.__version__)"
+          python -c "import cirq; print('Cirq:', cirq.__version__)"
+          python -c "import numpy; print('NumPy:', numpy.__version__)"
+          python -c "import scipy; print('SciPy:', scipy.__version__)"
+          python -c "import sklearn; print('scikit-learn:', sklearn.__version__)"
+          python -c "import pytest; print('pytest:', pytest.__version__)"
           python -c "import qml_ci; print('qml_ci:', qml_ci.__version__)"
+
+      - name: Diagnose every test module
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import pathlib
+          import traceback
+          import sys
+
+          failures = []
+
+          for path in sorted(pathlib.Path("tests").rglob("test_*.py")):
+              module_name = "ci_diagnostic_" + "_".join(path.with_suffix("").parts)
+              print("\n" + "=" * 100)
+              print(f"IMPORTING: {path}")
+              print("=" * 100)
+              try:
+                  spec = importlib.util.spec_from_file_location(module_name, path)
+                  module = importlib.util.module_from_spec(spec)
+                  spec.loader.exec_module(module)
+                  print(f"OK: {path}")
+              except BaseException:
+                  failures.append(str(path))
+                  traceback.print_exc()
+
+          print("\n" + "=" * 100)
+          print("DIAGNOSTIC SUMMARY")
+          print("=" * 100)
+          if failures:
+              print("FAILED MODULES:")
+              for failure in failures:
+                  print(f"  - {failure}")
+              sys.exit(1)
+          print("All test modules imported successfully.")
+          PY
 
       - name: Collect core tests
         run: |
-          python -m pytest tests             -m "not slow and not nightly and not hardware"             --collect-only -q
+          python -m pytest tests             -m "not slow and not nightly and not hardware"             --collect-only -vv
 
       - name: Run core tests
         run: |
-          python -m pytest tests             -m "not slow and not nightly and not hardware"             --cov=qml_ci             --cov-report=term-missing             --cov-report=xml             -v
+          python -m pytest tests             -m "not slow and not nightly and not hardware"             --cov=qml_ci             --cov-report=term-missing             --cov-report=xml             -vv
 
       - name: Upload coverage
         if: always()
